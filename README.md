@@ -1,2 +1,2 @@
 # tg-moemgr-bot
-A simple forwarding bot that can forward files to a specified channel and tag them, designed for quickly formatting and uploading files in a storage channel.
+A simple bot that can forward files to a specific channel, designed for quickly formatting files' annotation. It also stores mappings of the file message ID, link, and filename in SQLite for files forwarded to the storage channel.

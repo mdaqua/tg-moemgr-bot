@@ -1,6 +1,7 @@
 import logging
 import random
 import string
+import sqlite3
 import nest_asyncio
 from datetime import datetime
 from telegram import Update
@@ -23,6 +24,23 @@ logging.basicConfig(
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+# 初始化数据库
+conn = sqlite3.connect('file_mapping.db')
+c = conn.cursor()
+c.execute('''CREATE TABLE IF NOT EXISTS files
+             (file_id TEXT PRIMARY KEY, file_name TEXT, file_type TEXT, timestamp TEXT, message_link TEXT)''')
+
+# 插入数据库
+def insert_file_mapping(file_id, file_name, file_type, timestamp, message_link):
+    c.execute("INSERT INTO files (file_id, file_name, file_type, timestamp, message_link) VALUES (?, ?, ?, ?, ?)",
+              (file_id, file_name, file_type, timestamp, message_link))
+    conn.commit()
+
+# 查询数据库
+def get_message_link(file_id):
+    c.execute("SELECT message_link FROM files WHERE file_id=?", (file_id,))
+    return c.fetchone()
 
 # 生成32位随机序列
 def generate_random_sequence() -> str:
@@ -131,29 +149,46 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption = build_caption(context.user_data)
         file_id = context.user_data['file_id']
         file_type = context.user_data['file_type']
+        extension = context.user_data['file_name'].split('.')[-1].lower()
+        file_id_name = f"{context.user_data['random_sequence']}.{extension}"
 
         # 根据文件类型转发文件
         if file_type == "photo":
-            await context.bot.send_photo(
+            sent_message = await context.bot.send_photo(
                 parse_mode='html',
                 chat_id=get_target_channel_id(),
                 photo=file_id,
                 caption=caption
             )
         elif file_type == "video":
-            await context.bot.send_video(
+            sent_message = await context.bot.send_video(
                 parse_mode='html',
                 chat_id=get_target_channel_id(),
                 video=file_id,
                 caption=caption
             )
         else:
-            await context.bot.send_document(
+            sent_message = await context.bot.send_document(
                 parse_mode='html',
                 chat_id=get_target_channel_id(),
                 document=file_id,
                 caption=caption
             )
+
+        # 获取 message_id 和 chat_id
+        message_id = sent_message.message_id
+        chat_id = sent_message.chat_id
+
+        # 构建消息链接
+        if str(chat_id).startswith("-100"):
+            # 如果 chat_id 是一个频道或超级群组ID，通常以 "-100" 开头
+            message_link = f"https://t.me/c/{str(chat_id)[4:]}/{message_id}"
+            print(message_link)
+        else:
+            # 如果 chat_id 是普通群组或用户的私聊ID
+            message_link = f"https://t.me/{chat_id}/{message_id}"
+
+        insert_file_mapping(file_id, file_id_name, extension, datetime.now().timestamp(), message_link)
 
         await update.message.reply_text("文件已转发到频道！")
         context.user_data.clear()
